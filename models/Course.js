@@ -92,7 +92,8 @@ const courseSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      default: [],
+      // default: [],
+      trim: true,
     },
     subCategories: [
       {
