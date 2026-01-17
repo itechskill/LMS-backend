@@ -1,5 +1,6 @@
 import Lecture from "../models/Lectures.js";
 import Course from "../models/Course.js";
+import mongoose from "mongoose";
 
 // CREATE LECTURE
 export const createLecture = async (req, res) => {
@@ -63,7 +64,15 @@ export const updateLecture = async (req, res) => {
 // GET BY COURSE
 export const getLecturesByCourse = async (req, res) => {
   try {
-    const lectures = await Lecture.find({ course: req.params.courseId, isDeleted: false, status: "Active" }).sort({ lectureNumber: 1 });
+    // const { courseId } =req.params;
+    // //validate objectid
+    // if(!mongoose.Types.ObjectId.isValid(courseId)){
+    //   return req.status(400).json({ message: "Invalid courseId"});
+
+    // }
+    const lectures = await Lecture.find({ course: req.params.courseId, isDeleted: false, status: "Active" })
+    // .populate("course","title")
+    .sort({ lectureNumber: 1 });
     res.json(lectures);
   } catch (error) {
     console.error("GetLecturesByCourse Error:", error);
