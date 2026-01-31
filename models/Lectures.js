@@ -18,7 +18,7 @@ const lectureSchema = new mongoose.Schema(
       ref: "Course",
       required: true,
     },
-
+    subCategory: { type: String, required: true, trim: true },   //new
     lectureNumber: {
       type: Number,
       default: 1,
@@ -56,7 +56,7 @@ const lectureSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
+    priceRequired: { type: Number, default: 0 }, // new
     status: {
       type: String,
       enum: ["Active", "Inactive"],

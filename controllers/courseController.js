@@ -417,3 +417,41 @@ export const enrollStudent = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+//new
+
+
+
+/* ================= GET COURSE PRICE ================= */
+export const getCoursePrice = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id).select("price title");
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      courseId: course._id,
+      title: course.title,
+      price: course.price || 0
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
+

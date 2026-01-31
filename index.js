@@ -171,6 +171,7 @@ import questionRoutes from "./routes/questionRoutes.js";
 import attemptRoutes from "./routes/attemptRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
 import adminExamResultsRoutes from "./routes/adminExamResults.js";
+import paymentRoutes from "./routes/paymentRoutes.js"; // ✅ NEW
 
 import errorHandler from "./middleware/errorMiddleware.js";
 
@@ -184,10 +185,10 @@ const __dirname = path.dirname(__filename);
 // ====== CORS (IMPORTANT – FIXED) ======
 app.use(cors({
   origin: [
-    "http://localhost:3000",
-    "http://31.97.47.107",
+    // "http://localhost:3000",
+    // "http://31.97.47.107",
     "http://itechskill.com",
-    "https://itechskill.com"
+    // "http://172.26.128.1:3000"
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
@@ -215,7 +216,7 @@ app.use("/api/questions", questionRoutes);
 app.use("/api/attempts", attemptRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/admin", adminExamResultsRoutes);
-
+app.use("/api/payments", paymentRoutes); // ✅ NEW
 // ====== Test Route ======
 app.get("/", (req, res) => {
   res.send("LMS Backend Server Running Successfully! 🚀");
