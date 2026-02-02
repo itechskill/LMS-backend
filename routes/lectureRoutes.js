@@ -41,9 +41,11 @@ router.delete("/delete/:id", protect, admin, deleteLecture);
 // ==================
 
 // Get all lectures by course
-router.get("/course/:courseId", protect, getLecturesByCourse);
+// router.get("/course/:courseId", protect, getLecturesByCourse);
+router.get("/course/:courseId",  getLecturesByCourse);
 
 // Get a single lecture by ID
-router.get("/:id", protect, getLecture);
+// router.get("/:id", protect, getLecture);
+router.get("/:id", getLecture);
 
 export default router;

@@ -17,8 +17,15 @@ const lectureSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Course",
       required: true,
+      index: true,
     },
-    subCategory: { type: String, required: true, trim: true },   //new
+
+    subCategory: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     lectureNumber: {
       type: Number,
       default: 1,
@@ -30,18 +37,14 @@ const lectureSchema = new mongoose.Schema(
       required: true,
     },
 
-    /* =========================
-       FILE PATHS
-    ========================= */
+    /* FILE PATHS */
     videoPath: { type: String, default: "" },
     pdfPath: { type: String, default: "" },
     documentPath: { type: String, default: "" },
     excelPath: { type: String, default: "" },
     pptPath: { type: String, default: "" },
 
-    /* =========================
-       VIDEO / FILE URL
-    ========================= */
+    /* VIDEO URL */
     videoUrl: {
       type: String,
       default: "",
@@ -56,7 +59,12 @@ const lectureSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    priceRequired: { type: Number, default: 0 }, // new
+
+    priceRequired: {
+      type: Number,
+      default: 0,
+    },
+
     status: {
       type: String,
       enum: ["Active", "Inactive"],
@@ -70,5 +78,8 @@ const lectureSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// 🚀 Performance index
+lectureSchema.index({ course: 1, lectureNumber: 1 });
 
 export default mongoose.model("Lecture", lectureSchema);
