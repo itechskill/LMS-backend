@@ -1,22 +1,3 @@
-// import mongoose from "mongoose";
-
-// const enrollmentSchema = new mongoose.Schema(
-//   {
-//     student: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-//     course: { type: mongoose.Schema.Types.ObjectId, ref: "Course", required: true },
-//     isPaid: { type: Boolean, default: false}, //new
-//     enrolledAt: { type: Date, default: Date.now },
-//     endDate: { type: Date }, 
-//   },
-//   {
-//     timestamps: true, // automatically adds createdAt and updatedAt
-//   }
-// );
-
-// export default mongoose.model("Enrollment", enrollmentSchema);
-
-
-
 import mongoose from "mongoose";
 
 const enrollmentSchema = new mongoose.Schema(
@@ -89,6 +70,17 @@ const enrollmentSchema = new mongoose.Schema(
       type: Number, // in days
       default: 365 // 1 year default
     },
+
+
+    grantedByAdmin: {
+      type: Boolean,
+      default: false
+    },
+    grantedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User" // admin id
+    },
+
     
     // 🔹 COURSE ACCESS
     isActive: {

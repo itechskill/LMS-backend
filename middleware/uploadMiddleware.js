@@ -2,23 +2,45 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-// Create uploads folder if not exists
+// ===============================
+// CREATE UPLOADS FOLDER
+// ===============================
 const uploadDir = "uploads";
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-// Storage
+// ===============================
+// STORAGE CONFIG
+// ===============================
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
   filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const uniqueName =
+      Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueName + path.extname(file.originalname));
   },
 });
 
-// File filter
+// ===============================
+// FILE FILTER (FIXED & FLEXIBLE)
+// ===============================
 const allowedTypes = [
-  "image/jpeg", "image/png",
-  "video/mp4", "video/mkv", "video/webm",
+  // Images
+  "image/jpeg",
+  "image/png",
+
+  // Videos (ALL COMMON TYPES)
+  "video/mp4",
+  "video/mpeg",
+  "video/webm",
+  "video/quicktime",
+  "video/x-matroska",
+  "application/octet-stream",
+
+  // Documents
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -30,16 +52,23 @@ const allowedTypes = [
 ];
 
 const fileFilter = (req, file, cb) => {
-  allowedTypes.includes(file.mimetype)
-    ? cb(null, true)
-    : cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    console.warn("⚠️ Unknown mimetype allowed:", file.mimetype);
+    cb(null, true); // allow but log (prevents silent failure)
+  }
 };
 
-// Multer upload
+// ===============================
+// MULTER INSTANCE
+// ===============================
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500MB
+  },
 });
 
 export default upload;

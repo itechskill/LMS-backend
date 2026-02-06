@@ -3,76 +3,91 @@ import Course from "../models/Course.js";
 import User from "../models/User.js";
 import mongoose from "mongoose";
 
-/* ================= ENROLL IN COURSE ================= */
 export const enrollCourse = async (req, res) => {
   try {
-    const { studentId, courseId, isPaid } = req.body;
+    console.log("📝 ENROLL COURSE REQUEST");
+    console.log("Course ID:", req.params.courseId);
+    console.log("Student ID:", req.user?._id);
 
-    // ✅ Validate ObjectIds
-    if (
-      !mongoose.Types.ObjectId.isValid(studentId) ||
-      !mongoose.Types.ObjectId.isValid(courseId)
-    ) {
-      return res.status(400).json({ message: "Invalid studentId or courseId" });
-    }
+    const { courseId } = req.params;
+    const studentId = req.user?._id;
 
-    // ✅ Check duplicate enrollment
-    const existing = await Enrollment.findOne({
-      student: studentId,
-      course: courseId,
-    });
-    if (existing) {
-      return res
-        .status(400)
-        .json({ message: "Student already enrolled in this course" });
+    // ✅ Validate courseId
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid course ID" 
+      });
     }
 
     // ✅ Check course exists
     const course = await Course.findById(courseId);
     if (!course) {
-      return res.status(404).json({ message: "Course not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Course not found" 
+      });
     }
 
-    // ✅ Determine payment status
-    // If course price > 0, require payment. Free courses (price = 0) are auto-paid
-    const paymentRequired = course.price > 0;
-    const paymentStatus = paymentRequired ? (isPaid || false) : true;
-
-    // ✅ Calculate endDate (if duration exists in hours, convert to days)
-    const endDate = course.duration
-      ? new Date(Date.now() + Number(course.duration) * 24 * 60 * 60 * 1000)
-      : null;
-
-    // ✅ Save enrollment
-    const enrollment = await Enrollment.create({
+    // ✅ Check if already enrolled
+    let enrollment = await Enrollment.findOne({
       student: studentId,
       course: courseId,
-      isPaid: paymentStatus,
-      endDate,
+      isDeleted: { $ne: true }
     });
 
-    // ✅ Sync with User.courses
+    if (enrollment) {
+      console.log("✅ Already enrolled:", enrollment._id);
+      return res.json({
+        success: true,
+        message: "Already enrolled in this course",
+        enrollment,
+        alreadyEnrolled: true
+      });
+    }
+
+    // ✅ CRITICAL FIX: Determine payment status correctly
+    const isFreeCourse = course.price === 0 || course.price === null || course.price === undefined;
+    
+    enrollment = await Enrollment.create({
+      student: studentId,
+      course: courseId,
+      enrollmentStatus: isFreeCourse ? "active" : "pending",
+      isPaid: isFreeCourse, // Free course = auto paid
+      paymentMethod: isFreeCourse ? "free" : "card",
+      enrolledAt: new Date()
+    });
+
+    console.log("✅ New enrollment created:", enrollment._id);
+
+    // ✅ Also update User model if needed
     await User.findByIdAndUpdate(studentId, {
-      $addToSet: { courses: courseId },
+      $addToSet: { courses: courseId }
     });
-
-    // ✅ Populate response
-    const populatedEnrollment = await Enrollment.findById(enrollment._id)
-      .populate("student", "fullName email")
-      .populate("course", "title duration price");
 
     res.status(201).json({
-      message: paymentRequired && !paymentStatus 
-        ? "Enrolled successfully. Payment required to access content." 
-        : "Enrolled successfully!",
-      enrollment: populatedEnrollment,
-      paymentRequired,
+      success: true,
+      message: isFreeCourse 
+        ? "Enrolled successfully! Full access granted." 
+        : "Enrolled successfully! Payment required for full access.",
+      enrollment,
+      coursePrice: course.price,
+      isFreeCourse
     });
+
   } catch (err) {
-    console.error("Enroll course error:", err);
-    res.status(500).json({ message: "Failed to enroll course" });
+    console.error("❌ ENROLLMENT ERROR:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to enroll in course",
+      error: err.message 
+    });
   }
 };
+
+
+
+
 
 /* ================= GET STUDENT ENROLLED COURSES ================= */
 export const getEnrolledCourses = async (req, res) => {
@@ -135,127 +150,107 @@ export const updatePaymentStatus = async (req, res) => {
   }
 };
 
-/* ================= REMOVE ENROLLMENT ================= */
 export const removeEnrollment = async (req, res) => {
-  try {
-    const enrollmentId = req.params.id;
+  const { enrollmentId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(enrollmentId)) {
-      return res.status(400).json({ message: "Invalid enrollment ID" });
-    }
-
-    const deleted = await Enrollment.findByIdAndDelete(enrollmentId);
-    if (!deleted) {
-      return res.status(404).json({ message: "Enrollment not found" });
-    }
-
-    // ✅ Remove from User.courses
-    await User.findByIdAndUpdate(deleted.student, {
-      $pull: { courses: deleted.course },
-    });
-
-    res.status(200).json({ message: "Enrollment removed successfully" });
-  } catch (err) {
-    console.error("Remove enrollment error:", err);
-    res.status(500).json({ message: "Failed to remove enrollment" });
+  const enrollment = await Enrollment.findById(enrollmentId);
+  if (!enrollment) {
+    return res.status(404).json({ message: "Enrollment not found" });
   }
+
+  enrollment.isDeleted = true;
+  enrollment.enrollmentStatus = "cancelled";
+
+  await enrollment.save();
+
+  res.json({
+    success: true,
+    message: "Enrollment removed (soft delete)",
+  });
 };
-
-
-//new
-
-
-/* ================= CHECK ENROLLMENT STATUS WITH PAYMENT ================= */
-// export const checkEnrollmentStatus = async (req, res) => {
-//   try {
-//     const { studentId, courseId } = req.params;
-
-//     // ✅ Validate ObjectIds
-//     if (
-//       !mongoose.Types.ObjectId.isValid(studentId) ||
-//       !mongoose.Types.ObjectId.isValid(courseId)
-//     ) {
-//       return res.status(400).json({ message: "Invalid studentId or courseId" });
-//     }
-
-//     // ✅ Check enrollment
-//     const enrollment = await Enrollment.findOne({
-//       student: studentId,
-//       course: courseId,
-//     })
-//       .populate("student", "fullName email")
-//       .populate("course", "title price duration");
-
-//     if (!enrollment) {
-//       return res.status(404).json({ 
-//         message: "Not enrolled in this course",
-//         isEnrolled: false,
-//         isPaid: false 
-//       });
-//     }
-
-//     res.status(200).json({
-//       message: "Enrollment found",
-//       isEnrolled: true,
-//       isPaid: enrollment.isPaid || false,
-//       enrollment
-//     });
-//   } catch (err) {
-//     console.error("Check enrollment status error:", err);
-//     res.status(500).json({ message: "Failed to check enrollment status" });
-//   }
-// };
 export const checkEnrollmentStatus = async (req, res) => {
   try {
     const { studentId, courseId } = req.params;
 
-    if (
-      !mongoose.Types.ObjectId.isValid(studentId) ||
-      !mongoose.Types.ObjectId.isValid(courseId)
-    ) {
-      return res.status(400).json({ message: "Invalid studentId or courseId" });
-    }
+    console.log("🔍 CHECK ENROLLMENT:", { studentId, courseId });
 
-    // ✅ Course ka price check karo
-    const course = await Course.findById(courseId).select("price");
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
-
-    const enrollment = await Enrollment.findOne({
-      student: studentId,
-      course: courseId,
-    })
-      .populate("student", "fullName email")
-      .populate("course", "title price duration");
-
-    if (!enrollment) {
-      return res.status(404).json({ 
-        message: "Not enrolled in this course",
-        isEnrolled: false,
-        isPaid: false,
-        coursePrice: course.price || 0  // ✅ IMPORTANT: Course price return karo
+    // ✅ Validate IDs
+    if (!mongoose.Types.ObjectId.isValid(studentId) || 
+        !mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid studentId or courseId" 
       });
     }
 
-    // ✅ FREE course hai to automatically isPaid true
-    const isPaidStatus = course.price === 0 ? true : (enrollment.isPaid || false);
+    // ✅ Get course first
+    const course = await Course.findById(courseId).select("price title");
+    if (!course) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Course not found" 
+      });
+    }
+
+    // ✅ Check enrollment
+    const enrollment = await Enrollment.findOne({
+      student: studentId,
+      course: courseId,
+      isDeleted: { $ne: true }
+    })
+    .populate("student", "fullName email")
+    .populate("course", "title price duration");
+
+    const isFreeCourse = course.price === 0;
+
+    // ✅ If not enrolled
+    if (!enrollment) {
+      return res.status(200).json({
+        success: true,
+        isEnrolled: false,
+        isPaid: false,
+        hasAccess: isFreeCourse, // Free course = access even without enrollment
+        isFreeCourse,
+        coursePrice: course.price,
+        courseTitle: course.title,
+        message: isFreeCourse 
+          ? "Free course available" 
+          : "Not enrolled in this course"
+      });
+    }
+
+    // ✅ If enrolled, determine payment status
+    const isPaid = isFreeCourse ? true : (enrollment.isPaid === true);
+    const hasAccess = isFreeCourse || isPaid;
 
     res.status(200).json({
-      message: "Enrollment found",
+      success: true,
       isEnrolled: true,
-      isPaid: isPaidStatus,  // ✅ Free courses ke liye true
-      coursePrice: course.price || 0,  // ✅ Course price
+      isPaid,
+      hasAccess,
+      isFreeCourse,
+      coursePrice: course.price,
+      courseTitle: course.title,
       enrollment: {
         ...enrollment.toObject(),
-        isPaid: isPaidStatus
-      }
+        isPaid // Override with correct value
+      },
+      message: hasAccess 
+        ? "Full access granted" 
+        : "Enrolled but payment required"
     });
+
   } catch (err) {
-    console.error("Check enrollment status error:", err);
-    res.status(500).json({ message: "Failed to check enrollment status" });
+    console.error("❌ CHECK ENROLLMENT ERROR:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to check enrollment status",
+      error: err.message
+    });
   }
 };
+
+
 
 
 

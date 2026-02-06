@@ -2,82 +2,80 @@ import mongoose from "mongoose";
 import Enrollment from "../models/Enrollment.js";
 import Course from "../models/Course.js";
 import User from "../models/User.js";
-import Payment from "../models/Payment.js"; // You'll need to create this model
+import Payment from "../models/Payment.js";
 
 /* ================= PROCESS PAYMENT ================= */
 export const processPayment = async (req, res) => {
   try {
-    const { studentId, courseId, paymentMethod, amount, paymentId } = req.body;
+    const { courseId, paymentId, paymentMethod = "card" } = req.body;
+    const studentId = req.user._id;
 
-    // ✅ Validate ObjectIds
-    if (
-      !mongoose.Types.ObjectId.isValid(studentId) ||
-      !mongoose.Types.ObjectId.isValid(courseId)
-    ) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid studentId or courseId" 
-      });
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ success: false, message: "Invalid course ID" });
     }
 
-    // ✅ Check if course exists
     const course = await Course.findById(courseId);
     if (!course) {
-      return res.status(404).json({ 
-        success: false,
-        message: "Course not found" 
-      });
+      return res.status(404).json({ success: false, message: "Course not found" });
     }
 
-    // ✅ Check enrollment
-    let enrollment = await Enrollment.findOne({
+    const isFreeCourse = course.price === 0 || course.isFree === true;
+
+    const enrollment = await Enrollment.findOne({
       student: studentId,
       course: courseId,
+      isDeleted: { $ne: true }
     });
 
-    // If not enrolled, create enrollment
     if (!enrollment) {
-      enrollment = await Enrollment.create({
-        student: studentId,
-        course: courseId,
-        isPaid: false,
+      return res.status(400).json({ success: false, message: "Please enroll first" });
+    }
+
+    // ✅ Free course auto unlock
+    if (isFreeCourse) {
+      enrollment.isPaid = true;
+      enrollment.enrollmentStatus = "active";
+      await enrollment.save();
+
+      return res.json({
+        success: true,
+        message: "Free course unlocked"
       });
     }
 
-    // ✅ Update enrollment with payment info
+    // ✅ Paid course
     enrollment.isPaid = true;
+    enrollment.enrollmentStatus = "active";
     enrollment.paymentDate = new Date();
     enrollment.paymentMethod = paymentMethod;
     enrollment.paymentId = paymentId || `PAY_${Date.now()}`;
     await enrollment.save();
 
-    // ✅ Create payment record (optional)
     const payment = await Payment.create({
       student: studentId,
       course: courseId,
       enrollment: enrollment._id,
-      amount: amount || course.price,
+      amount: course.price,
       paymentMethod,
-      paymentId: paymentId || `PAY_${Date.now()}`,
-      status: 'completed'
+      paymentId: enrollment.paymentId,
+      status: "completed"
     });
 
-    // ✅ Update user courses
     await User.findByIdAndUpdate(studentId, {
-      $addToSet: { courses: courseId },
+      $addToSet: { courses: courseId }
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
-      message: "Payment successful! Course unlocked.",
-      enrollment,
+      message: "Payment successful. Course unlocked.",
       payment
     });
-  } catch (err) {
-    console.error("Process payment error:", err);
-    res.status(500).json({ 
+
+  } catch (error) {
+    console.error("❌ PROCESS PAYMENT ERROR:", error);
+    res.status(500).json({
       success: false,
-      message: "Payment processing failed" 
+      message: "Payment processing failed"
     });
   }
 };
@@ -85,34 +83,41 @@ export const processPayment = async (req, res) => {
 /* ================= CHECK PAYMENT STATUS ================= */
 export const checkPaymentStatus = async (req, res) => {
   try {
-    const { studentId, courseId } = req.query;
+    const { courseId } = req.params;
+    const studentId = req.user._id;
 
-    if (!studentId || !courseId) {
-      return res.status(400).json({ 
-        success: false,
-        message: "studentId and courseId are required" 
-      });
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ success: false, message: "Invalid course ID" });
+    }
+
+    const course = await Course.findById(courseId).select("price isFree");
+    if (!course) {
+      return res.status(404).json({ success: false, message: "Course not found" });
     }
 
     const enrollment = await Enrollment.findOne({
       student: studentId,
       course: courseId,
+      isDeleted: { $ne: true }
     });
 
-    const course = await Course.findById(courseId).select("price");
+    const isFreeCourse = course.price === 0 || course.isFree === true;
+    const isPaid = isFreeCourse || enrollment?.isPaid === true;
 
-    res.status(200).json({
+    res.json({
       success: true,
-      isPaid: enrollment?.isPaid || false,
-      coursePrice: course?.price || 0,
-      isFree: (course?.price || 0) === 0,
-      enrollmentDate: enrollment?.createdAt
+      isEnrolled: !!enrollment,
+      isPaid,
+      hasAccess: isPaid,
+      coursePrice: course.price,
+      isFreeCourse
     });
-  } catch (err) {
-    console.error("Check payment status error:", err);
-    res.status(500).json({ 
+
+  } catch (error) {
+    console.error("❌ CHECK PAYMENT STATUS ERROR:", error);
+    res.status(500).json({
       success: false,
-      message: "Failed to check payment status" 
+      message: "Failed to check payment status"
     });
   }
 };
@@ -120,28 +125,29 @@ export const checkPaymentStatus = async (req, res) => {
 /* ================= GET PAYMENT HISTORY ================= */
 export const getPaymentHistory = async (req, res) => {
   try {
-    const { studentId } = req.params;
+    const studentId = req.user._id;
 
     const payments = await Payment.find({ student: studentId })
-      .populate("course", "title")
+      .populate("course", "title price")
       .sort({ createdAt: -1 })
       .lean();
 
-    res.status(200).json({
+    res.json({
       success: true,
       count: payments.length,
       payments
     });
-  } catch (err) {
-    console.error("Get payment history error:", err);
-    res.status(500).json({ 
+
+  } catch (error) {
+    console.error("❌ PAYMENT HISTORY ERROR:", error);
+    res.status(500).json({
       success: false,
-      message: "Failed to fetch payment history" 
+      message: "Failed to fetch payment history"
     });
   }
 };
 
-/* ================= GET ADMIN PAYMENTS DASHBOARD ================= */
+/* ================= ADMIN PAYMENTS DASHBOARD ================= */
 export const getAdminPayments = async (req, res) => {
   try {
     const payments = await Payment.find()
@@ -153,25 +159,21 @@ export const getAdminPayments = async (req, res) => {
     const stats = {
       totalPayments: payments.length,
       totalRevenue: payments.reduce((sum, p) => sum + (p.amount || 0), 0),
-      pendingPayments: payments.filter(p => p.status === 'pending').length,
-      completedPayments: payments.filter(p => p.status === 'completed').length,
-      paymentMethods: {
-        card: payments.filter(p => p.paymentMethod === 'card').length,
-        upi: payments.filter(p => p.paymentMethod === 'upi').length,
-        netbanking: payments.filter(p => p.paymentMethod === 'netbanking').length
-      }
+      completedPayments: payments.filter(p => p.status === "completed").length,
+      pendingPayments: payments.filter(p => p.status === "pending").length
     };
 
-    res.status(200).json({
+    res.json({
       success: true,
       stats,
       payments
     });
-  } catch (err) {
-    console.error("Get admin payments error:", err);
-    res.status(500).json({ 
+
+  } catch (error) {
+    console.error("❌ ADMIN PAYMENTS ERROR:", error);
+    res.status(500).json({
       success: false,
-      message: "Failed to fetch payments data" 
+      message: "Failed to fetch admin payments"
     });
   }
 };
